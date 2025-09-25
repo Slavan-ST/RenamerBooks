@@ -5,14 +5,18 @@
              xmlns:vm="clr-namespace:RenameBooks.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="RenameBooks.Views.MainView"
+			 xmlns:utils="clr-namespace:RenameBooks.Utils"
              x:DataType="vm:MainViewModel">
 	
 
 	<StackPanel Margin="20">
 		<TextBlock Text="Переименование книг по метаданным" FontSize="18" Margin="0,0,0,20" />
 
+		<CheckBox Content="Рекурсивно (включая подпапки)" IsChecked="{Binding IsRecursive}" Margin="0,0,0,10" />
+		
 		<Button Content="Выбрать папку и переименовать"
-				Command="{Binding RenameBooksCommand}"/>
+				Command="{Binding RenameBooksCommand}"
+				IsEnabled="{Binding IsRunning, Converter={x:Static utils:Converters.BoolInverter}}"/>
 
 		<TextBlock Text="{Binding Status}" Margin="0,10" />
 

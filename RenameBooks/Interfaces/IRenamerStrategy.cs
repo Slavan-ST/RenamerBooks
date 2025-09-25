@@ -10,5 +10,7 @@ namespace RenameBooks.Interfaces
     {
         bool CanHandle(string filePath);
         string? ExtractTitle(string filePath);
+        (string? SeriesName, int? SeriesNumber) ExtractSeriesInfo(string filePath);
+        string? ExtractAuthor(string filePath);
     }
 }

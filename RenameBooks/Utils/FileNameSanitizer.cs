@@ -10,14 +10,19 @@ namespace RenameBooks.Utils
 {
     public class FileNameSanitizer : IFileNameSanitizer
     {
+        private static readonly char[] InvalidChars = Path.GetInvalidFileNameChars()
+            .Concat(Path.GetInvalidPathChars())
+            .Distinct()
+            .ToArray();
+
         public string Sanitize(string input)
         {
-            if (string.IsNullOrEmpty(input)) return "unknown";
+            if (string.IsNullOrEmpty(input)) return "без_названия";
 
-            var invalid = Path.GetInvalidFileNameChars();
-            return string.Join("_", input.Split(invalid, StringSplitOptions.RemoveEmptyEntries))
-                       .Trim('_')
-                       .Replace("__", "_");
+            var sanitized = InvalidChars.Aggregate(input, (current, c) => current.Replace(c, '_'));
+            // Убираем точки и пробелы в конце
+            sanitized = sanitized.Trim('.', ' ', '_');
+            return string.IsNullOrEmpty(sanitized) ? "без_названия" : sanitized;
         }
     }
 }

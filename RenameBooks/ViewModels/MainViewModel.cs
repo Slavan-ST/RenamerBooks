@@ -5,6 +5,7 @@ using RenameBooks.Interfaces;
 using RenameBooks.Services;
 using RenameBooks.ViewModels;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -16,17 +17,36 @@ namespace RenameBooks.ViewModels
 {
     public class MainViewModel : ViewModelBase
     {
+        #region Поля и зависимости
+
         private readonly IDialogService _dialogService;
         private readonly FileRenamerService _renamerService;
 
+
+        private readonly HashSet<string> _allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".fb2",
+                ".fb2.zip"
+            };
+
+        #endregion
+
+        #region Свойства
         [Reactive]
-        public bool IsRunning { get; set; }
+        public bool IsRunning { get; set; } = false;
+        [Reactive]
+        public bool IsRecursive { get; set; } = false;
 
         [Reactive]
         public string Status { get; set; } = "Готово";
+
         public ReactiveCommand<Unit, Unit> RenameBooksCommand { get; set; }
 
         public ObservableCollection<string> Log { get; } = new();
+
+        #endregion
+
+        #region Конструктор
 
         public MainViewModel(IDialogService dialogService, FileRenamerService renamerService)
         {
@@ -36,6 +56,9 @@ namespace RenameBooks.ViewModels
             RenameBooksCommand = ReactiveCommand.CreateFromTask(RenameBooksAsync);
         }
 
+        #endregion
+
+        #region Команды
         private async Task RenameBooksAsync()
         {
             if (IsRunning) return;
@@ -43,11 +66,11 @@ namespace RenameBooks.ViewModels
             var folder = await _dialogService.ShowFolderPickerAsync();
             if (string.IsNullOrEmpty(folder)) return;
 
-            // Анализ: сколько файлов и каких типов
-            var files = Directory.GetFiles(folder, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(f => f.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase)
-                            )
+            var searchOption = IsRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+
+
+            var files = Directory.GetFiles(folder, "*.*", searchOption)
+                .Where(f => _allowedExtensions.Contains(Path.GetExtension(f)))
                 .ToArray();
 
             if (files.Length == 0)
@@ -63,57 +86,16 @@ namespace RenameBooks.ViewModels
             var confirmed = await _dialogService.ShowConfirmationDialogAsync(message);
             if (!confirmed) return;
 
-            // Запуск переименования
-            await Task.Run(() => RenameBooksInFolder(folder));
-        }
-
-        private void RenameBooksInFolder(string folderPath)
-        {
             IsRunning = true;
             Log.Clear();
-            AppendLog($"Начинаю обработку папки: {folderPath}");
+            AppendLog($"Начинаю обработку папки: {folder}");
+            AppendLog($"Режим: {(IsRecursive ? "рекурсивный" : "только текущая папка")}");
 
             try
             {
-                var originalFiles = Directory.GetFiles(folderPath, "*.*")
-                    .Where(f => f.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase) ||
-                                f.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase)
-                                )
-                    .ToArray();
-
-                int success = 0, failed = 0;
-
-                foreach (string filePath in originalFiles)
-                {
-                    if (IsRunning == false) break; 
-
-                    try
-                    {
-                        var strategy = _renamerService.GetStrategy(filePath); 
-                        string? title = strategy.ExtractTitle(filePath);
-
-                        if (string.IsNullOrWhiteSpace(title))
-                        {
-                            AppendLog($"⚠ Пропущен (нет заголовка): {Path.GetFileName(filePath)}");
-                            continue;
-                        }
-
-                        string safeName = _renamerService.SanitizeFileName(title); 
-                        string extension = Path.GetExtension(filePath);
-                        string newFilePath = GetUniqueFilePath(folderPath, safeName, extension);
-
-                        File.Move(filePath, newFilePath);
-                        AppendLog($"✅ {Path.GetFileName(filePath)} → {Path.GetFileName(newFilePath)}");
-                        success++;
-                    }
-                    catch (Exception ex)
-                    {
-                        AppendLog($"❌ Ошибка: {Path.GetFileName(filePath)} — {ex.Message}");
-                        failed++;
-                    }
-                }
-
-                AppendLog($"Готово! Успешно: {success}, Ошибок: {failed}");
+                var targetFolder = Path.Combine(folder, "organized_books");
+                await Task.Run(() => _renamerService.OrganizeBooksToFolder(files, targetFolder));
+                AppendLog("Готово!");
             }
             catch (Exception ex)
             {
@@ -125,22 +107,17 @@ namespace RenameBooks.ViewModels
             }
         }
 
+        #endregion
+
+
+        #region Вспомогательные методы
+
         private void AppendLog(string message)
         {
-            // Обновление UI из фонового потока
-            Dispatcher.UIThread.Post(() => Log.Add($"[{DateTime.Now:HH:mm:ss}] {message}"));
+            var logEntry = $"[{DateTime.Now:HH:mm:ss}] {message}";
+            Dispatcher.UIThread.InvokeAsync(() => Log.Add(logEntry));
         }
 
-        private string GetUniqueFilePath(string directory, string baseName, string extension)
-        {
-            string candidate = Path.Combine(directory, baseName + extension);
-            int counter = 1;
-            while (File.Exists(candidate))
-            {
-                candidate = Path.Combine(directory, $"{baseName} ({counter}){extension}");
-                counter++;
-            }
-            return candidate;
-        }
+        #endregion
     }
 }

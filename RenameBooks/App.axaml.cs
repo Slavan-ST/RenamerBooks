@@ -10,6 +10,7 @@ using RenameBooks.Utils;
 using RenameBooks.ViewModels;
 using RenameBooks.Views;
 using System;
+using System.IO;
 
 namespace RenameBooks;
 
@@ -24,8 +25,13 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
+        var modelPath = Path.Combine(assetsDir, "model.onnx");
 
         ServiceCollection services = new ServiceCollection();
+
+
+        services.AddSingleton<INameNormalizer>(sp => new OnnxNameNormalizer(modelPath, assetsDir));
 
         services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
         services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();
