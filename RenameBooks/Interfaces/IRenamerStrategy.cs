@@ -9,6 +9,6 @@ namespace RenameBooks.Interfaces
     public interface IRenamerStrategy
     {
         bool CanHandle(string filePath);
-        string ExtractTitle(string filePath);
+        string? ExtractTitle(string filePath);
     }
 }

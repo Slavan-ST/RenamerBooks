@@ -1,5 +1,5 @@
 ﻿using RenameBooks.Factories;
-using RenameBooks.Utils;
+using RenameBooks.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,11 +14,16 @@ namespace RenameBooks.Services
         private readonly RenamerStrategyFactory _factory;
         private readonly IFileNameSanitizer _sanitizer;
 
+
         public FileRenamerService(RenamerStrategyFactory factory, IFileNameSanitizer sanitizer)
         {
             _factory = factory;
             _sanitizer = sanitizer;
         }
+
+
+        public IRenamerStrategy GetStrategy(string filePath) => _factory.GetStrategy(filePath);
+        public string SanitizeFileName(string title) => _sanitizer.Sanitize(title);
 
         public void RenameFilesInDirectory(string directoryPath, string searchPattern = "*.*")
         {

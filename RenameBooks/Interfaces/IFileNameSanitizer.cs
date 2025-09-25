@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RenameBooks.Utils
+namespace RenameBooks.Interfaces
 {
     public interface IFileNameSanitizer
     {

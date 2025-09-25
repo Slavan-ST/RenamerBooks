@@ -9,12 +9,13 @@ using RenameBooks.Strategies;
 using RenameBooks.Utils;
 using RenameBooks.ViewModels;
 using RenameBooks.Views;
+using System;
 
 namespace RenameBooks;
 
 public partial class App : Application
 {
-    public ServiceCollection services = new ServiceCollection();
+    public IServiceProvider? ServiceProvider { get; private set; }
 
     public override void Initialize()
     {
@@ -23,26 +24,34 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+
+        ServiceCollection services = new ServiceCollection();
+
+        services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
+        services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();
+        services.AddSingleton<RenamerStrategyFactory>();
+        services.AddSingleton<FileRenamerService>();
+        services.AddSingleton<IDialogService, DialogService>();
+        services.AddTransient<MainViewModel>();
+
+        ServiceProvider = services.BuildServiceProvider();
+
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainViewModel()
+
             };
         }
         else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
         {
             singleViewPlatform.MainView = new MainView
             {
-                DataContext = new MainViewModel()
+                DataContext = ServiceProvider.GetRequiredService<MainViewModel>()
             };
         }
 
-
-        services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
-        services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();
-        services.AddSingleton<RenamerStrategyFactory>();
-        services.AddSingleton<FileRenamerService>();
 
 
         base.OnFrameworkInitializationCompleted();
