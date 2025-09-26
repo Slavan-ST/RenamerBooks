@@ -1,6 +1,7 @@
 ﻿using Avalonia.Threading;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
+using RenameBooks.Factories;
 using RenameBooks.Interfaces;
 using RenameBooks.Services;
 using RenameBooks.ViewModels;
@@ -23,11 +24,7 @@ namespace RenameBooks.ViewModels
         private readonly FileRenamerService _renamerService;
 
 
-        private readonly HashSet<string> _allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ".fb2",
-                ".fb2.zip"
-            };
+        private readonly IReadOnlyCollection<string> _allowedExtensions;
 
         #endregion
 
@@ -48,8 +45,11 @@ namespace RenameBooks.ViewModels
 
         #region Конструктор
 
-        public MainViewModel(IDialogService dialogService, FileRenamerService renamerService)
+
+        public MainViewModel(IDialogService dialogService, FileRenamerService renamerService, RenamerFactory factory)
         {
+            _allowedExtensions = factory.GetSupportedExtensions().ToList().AsReadOnly();
+
             _dialogService = dialogService;
             _renamerService = renamerService;
 

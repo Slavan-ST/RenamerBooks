@@ -11,6 +11,7 @@ namespace RenameBooks.Interfaces
     {
         bool CanHandle(string filePath);
         BookMetadata? ExtractMetadata(string filePath);
+        public IEnumerable<string> GetSupportedExtensions();
     }
 
 }

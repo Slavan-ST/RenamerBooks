@@ -8,7 +8,7 @@ namespace RenameBooks.Records
 {
     public record BookMetadata(
         string? Title,
-        string? Author,
+        IReadOnlyList<Author> Authors, 
         string? SeriesName,
         int? SeriesNumber
     );

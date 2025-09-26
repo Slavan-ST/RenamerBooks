@@ -9,7 +9,7 @@ namespace RenameBooks.Views
         public MainView()
         {
             InitializeComponent();
-            DataContext = (App.Current as App).ServiceProvider.GetRequiredService<MainViewModel>();
+            DataContext = (App.Current as App)?.ServiceProvider?.GetRequiredService<MainViewModel>();
         }
     }
 

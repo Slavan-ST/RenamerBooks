@@ -21,5 +21,6 @@ namespace RenameBooks.Factories
             return _strategies.FirstOrDefault(s => s.CanHandle(filePath))
                    ?? throw new NotSupportedException($"No renamer strategy for file: {filePath}");
         }
+        public IEnumerable<string> GetSupportedExtensions() => _strategies.SelectMany(s => s.GetSupportedExtensions());
     }
 }

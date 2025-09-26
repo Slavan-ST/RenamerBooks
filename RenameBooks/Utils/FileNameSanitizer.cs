@@ -2,27 +2,29 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace RenameBooks.Utils
 {
     public class FileNameSanitizer : IFileNameSanitizer
     {
-        private static readonly char[] InvalidChars = Path.GetInvalidFileNameChars()
-            .Concat(Path.GetInvalidPathChars())
-            .Distinct()
-            .ToArray();
+        private const string DefaultFileName = "без_названия";
+        private static readonly HashSet<char> InvalidCharSet = new(Path.GetInvalidFileNameChars());
+        private static readonly char[] TrimmableChars = { '.', ' ', '_' };
 
         public string Sanitize(string input)
         {
-            if (string.IsNullOrEmpty(input)) return "без_названия";
+            if (string.IsNullOrEmpty(input))
+                return DefaultFileName;
 
-            var sanitized = InvalidChars.Aggregate(input, (current, c) => current.Replace(c, '_'));
-            // Убираем точки и пробелы в конце
-            sanitized = sanitized.Trim('.', ' ', '_');
-            return string.IsNullOrEmpty(sanitized) ? "без_названия" : sanitized;
+            var sb = new StringBuilder(input.Length);
+            foreach (char c in input)
+            {
+                sb.Append(InvalidCharSet.Contains(c) ? '_' : c);
+            }
+
+            var sanitized = sb.ToString().Trim(TrimmableChars);
+            return string.IsNullOrEmpty(sanitized) ? DefaultFileName : sanitized;
         }
     }
 }

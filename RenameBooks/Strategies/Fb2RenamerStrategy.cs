@@ -2,7 +2,9 @@
 using RenameBooks.Records;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Xml.Linq;
@@ -11,57 +13,83 @@ namespace RenameBooks.Strategies
 {
     public class Fb2RenamerStrategy : IRenamerStrategy
     {
+        private static readonly XNamespace Fb2Namespace = "http://www.gribuser.ru/xml/fictionbook/2.0";
+
         public bool CanHandle(string filePath)
         {
-            return filePath.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase) ||
-                   filePath.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase);
+            return IsFb2File(filePath) || IsFb2ZipFile(filePath);
         }
+        public IEnumerable<string> GetSupportedExtensions() => new[] { ".fb2", ".fb2.zip" };
 
-        private static readonly XNamespace Fb2Namespace = "http://www.gribuser.ru/xml/fictionbook/2.0";
+        private static bool IsFb2File(string path) =>
+            path.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsFb2ZipFile(string path) =>
+            path.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase);
 
         [return: MaybeNull]
         private XDocument? TryLoadFb2Document(string filePath)
         {
             try
             {
-                if (filePath.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase))
+                if (IsFb2ZipFile(filePath))
                 {
                     using var archive = ZipFile.OpenRead(filePath);
                     var fb2Entry = archive.Entries
-                        .FirstOrDefault(e => e.Name.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase));
-                    if (fb2Entry == null) return null;
+                        .FirstOrDefault(e => IsFb2File(e.Name));
+                    if (fb2Entry == null)
+                        return null;
 
-                    using var stream = fb2Entry.Open();
-                    return XDocument.Load(stream);
+                    using var entryStream = fb2Entry.Open();
+                    using var memoryStream = new MemoryStream();
+                    entryStream.CopyTo(memoryStream);
+                    memoryStream.Position = 0;
+                    return XDocument.Load(memoryStream);
                 }
-                else if (filePath.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase))
+                else if (IsFb2File(filePath))
                 {
                     return XDocument.Load(filePath);
                 }
+
                 return null;
             }
-            catch
+            catch (Exception ex)
             {
-                // В реальном проекте — логирование
+                Debug.WriteLine(ex);
                 return null;
             }
+        }
+
+        private List<Author> ExtractAuthorsFromDocument(XDocument doc, XNamespace ns)
+        {
+            var authors = new List<Author>();
+
+            foreach (var authorElement in doc.Descendants(ns + "author"))
+            {
+                string? firstName = authorElement.Element(ns + "first-name")?.Value?.Trim();
+                string? lastName = authorElement.Element(ns + "last-name")?.Value?.Trim();
+                string? nickname = authorElement.Element(ns + "nickname")?.Value?.Trim();
+                string? middleName = authorElement.Element(ns + "middle-name")?.Value?.Trim();
+
+                authors.Add(new Author(firstName, middleName, lastName, nickname));
+            }
+
+            return authors;
         }
 
         public BookMetadata? ExtractMetadata(string filePath)
         {
             var doc = TryLoadFb2Document(filePath);
-            if (doc == null) return null;
+            if (doc == null)
+                return null;
 
             var ns = Fb2Namespace;
 
-            // Извлекаем заголовок
             string? title = doc.Descendants(ns + "book-title")
                                .FirstOrDefault()?.Value?.Trim();
 
-            // Извлекаем автора
-            string? author = ExtractAuthorFromDocument(doc, ns);
+            var authors = ExtractAuthorsFromDocument(doc, ns);
 
-            // Извлекаем серию
             var sequenceElement = doc.Descendants(ns + "sequence").FirstOrDefault();
             string? seriesName = null;
             int? seriesNumber = null;
@@ -75,7 +103,6 @@ namespace RenameBooks.Strategies
                     seriesNumber = num;
                 }
 
-                // Если имя серии пустое — игнорируем всю серию
                 if (string.IsNullOrEmpty(seriesName))
                 {
                     seriesName = null;
@@ -83,40 +110,7 @@ namespace RenameBooks.Strategies
                 }
             }
 
-            return new BookMetadata(title, author, seriesName, seriesNumber);
-        }
-
-        private string? ExtractAuthorFromDocument(XDocument doc, XNamespace ns)
-        {
-            var authorElement = doc.Descendants(ns + "author").FirstOrDefault();
-            if (authorElement == null) return null;
-
-            string? firstName = authorElement.Element(ns + "first-name")?.Value?.Trim();
-            string? lastName = authorElement.Element(ns + "last-name")?.Value?.Trim();
-            string? nickname = authorElement.Element(ns + "nickname")?.Value?.Trim();
-            string? middleName = authorElement.Element(ns + "middle-name")?.Value?.Trim();
-
-            if (!string.IsNullOrEmpty(lastName))
-            {
-                var givenNames = new List<string>();
-                if (!string.IsNullOrEmpty(firstName))
-                    givenNames.Add(firstName);
-                if (!string.IsNullOrEmpty(middleName))
-                    givenNames.Add(middleName);
-
-                string givenNamePart = string.Join(" ", givenNames);
-                return string.IsNullOrEmpty(givenNamePart)
-                    ? lastName
-                    : $"{givenNamePart} {lastName}";
-            }
-
-            if (!string.IsNullOrEmpty(nickname))
-                return nickname;
-
-            if (!string.IsNullOrEmpty(firstName))
-                return firstName;
-
-            return null;
+            return new BookMetadata(title, authors, seriesName, seriesNumber);
         }
     }
 }
