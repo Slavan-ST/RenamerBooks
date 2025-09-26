@@ -3,6 +3,7 @@ using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using RenameBooks.Factories;
 using RenameBooks.Interfaces;
+using RenameBooks.Records;
 using RenameBooks.Services;
 using RenameBooks.ViewModels;
 using System;
@@ -35,7 +36,7 @@ namespace RenameBooks.ViewModels
         public bool IsRecursive { get; set; } = false;
 
         [Reactive]
-        public string Status { get; set; } = "Готово";
+        public ObservableCollection<BookCopyViewModel> OrganizedBooks { get; set; } = new();
 
         public ReactiveCommand<Unit, Unit> RenameBooksCommand { get; set; }
 
@@ -68,19 +69,29 @@ namespace RenameBooks.ViewModels
 
             var searchOption = IsRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
 
+            // Получаем ВСЕ файлы
+            var allFiles = Directory.GetFiles(folder, "*.*", searchOption);
 
-            var files = Directory.GetFiles(folder, "*.*", searchOption)
-                .Where(f => _allowedExtensions.Contains(Path.GetExtension(f)))
+            // Фильтруем поддерживаемые
+            var supportedFiles = allFiles
+                .Where(f => _allowedExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToArray();
 
-            if (files.Length == 0)
+            // Определяем неподдерживаемые
+            var unsupportedFiles = allFiles.Except(supportedFiles).ToArray();
+
+            if (supportedFiles.Length == 0 && unsupportedFiles.Length == 0)
             {
-                await _dialogService.ShowMessageAsync("Информация", "В папке не найдено поддерживаемых файлов.");
+                await _dialogService.ShowMessageAsync("Информация", "В папке не найдено файлов.");
                 return;
             }
 
-            var message = $"Найдено {files.Length} файлов для переименования.\n\n" +
-                          $"Форматы: {string.Join(", ", files.Select(f => Path.GetExtension(f).TrimStart('.')).Distinct())}\n\n" +
+            var message = $"Найдено файлов:\n" +
+                          $"— Поддерживаемых: {supportedFiles.Length}\n" +
+                          $"— Неподдерживаемых: {unsupportedFiles.Length}\n\n" +
+                          (supportedFiles.Length > 0
+                              ? $"Форматы: {string.Join(", ", supportedFiles.Select(f => Path.GetExtension(f).TrimStart('.')).Distinct())}\n\n"
+                              : "") +
                           "Продолжить?";
 
             var confirmed = await _dialogService.ShowConfirmationDialogAsync(message);
@@ -93,13 +104,40 @@ namespace RenameBooks.ViewModels
 
             try
             {
-                var targetFolder = Path.Combine(folder, "organized_books");
-                await Task.Run(() => _renamerService.OrganizeBooksToFolder(files, targetFolder));
-                AppendLog("Готово!");
+                string organizedRoot = Path.Combine(folder, "organized_books");
+                string notOrganizedRoot = Path.Combine(folder, "not_organized");
+
+                // 1. Обрабатываем поддерживаемые файлы
+                List<OrganizationResult> results = new();
+                if (supportedFiles.Length > 0)
+                {
+                    results = (List<OrganizationResult>)await Task.Run(() => _renamerService.OrganizeBooksToFolder(supportedFiles, organizedRoot));
+                    AppendLog($"Организовано {results.Count} книг.");
+                }
+
+                // 2. Перемещаем неподдерживаемые файлы
+                if (unsupportedFiles.Length > 0)
+                {
+                    await Task.Run(() => MoveUnsupportedFiles(unsupportedFiles, notOrganizedRoot, folder));
+                    AppendLog($"Перемещено {unsupportedFiles.Length} неподдерживаемых файлов в 'not_organized'.");
+                }
+
+                // Обновляем UI
+                OrganizedBooks.Clear();
+                foreach (var result in results)
+                {
+                    var bookVm = new BookCopyViewModel(
+                        result,
+                        organizedRoot,
+                        book => Dispatcher.UIThread.InvokeAsync(() => OrganizedBooks.Remove(book))
+                    );
+                    OrganizedBooks.Add(bookVm);
+                }
             }
             catch (Exception ex)
             {
                 AppendLog($"КРИТИЧЕСКАЯ ОШИБКА: {ex.Message}");
+                Debug.WriteLine(ex);
             }
             finally
             {
@@ -111,7 +149,50 @@ namespace RenameBooks.ViewModels
 
 
         #region Вспомогательные методы
+        private void MoveUnsupportedFiles(string[] unsupportedFiles, string notOrganizedRoot, string originalRoot)
+{
+    Directory.CreateDirectory(notOrganizedRoot);
 
+    foreach (var filePath in unsupportedFiles)
+    {
+        try
+        {
+            // Сохраняем относительную структуру папок (если рекурсивный режим)
+            string relativePath = Path.GetRelativePath(originalRoot, filePath);
+            string destinationDir = Path.Combine(notOrganizedRoot, Path.GetDirectoryName(relativePath)!);
+            Directory.CreateDirectory(destinationDir);
+
+            string fileName = Path.GetFileName(filePath);
+            string destinationPath = GetUniqueFilePath(Path.Combine(destinationDir, fileName));
+
+            File.Move(filePath, destinationPath);
+        }
+        catch (Exception ex)
+        {
+            // Лучше логировать, но не прерывать всю операцию
+            Debug.WriteLine($"Не удалось переместить '{filePath}': {ex.Message}");
+        }
+    }
+}
+        private string GetUniqueFilePath(string fullPath, int maxAttempts = 1000)
+        {
+            if (!File.Exists(fullPath))
+                return fullPath;
+
+            string dir = Path.GetDirectoryName(fullPath)!;
+            string name = Path.GetFileNameWithoutExtension(fullPath);
+            string ext = Path.GetExtension(fullPath);
+
+            for (int i = 1; i <= maxAttempts; i++)
+            {
+                string candidate = Path.Combine(dir, $"{name} ({i}){ext}");
+                if (!File.Exists(candidate))
+                    return candidate;
+            }
+
+            // Если не получилось — возвращаем оригинальное имя (File.Move сам выбросит исключение)
+            return fullPath;
+        }
         private void AppendLog(string message)
         {
             var logEntry = $"[{DateTime.Now:HH:mm:ss}] {message}";
