@@ -26,14 +26,11 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
-        var scriptPath = Path.Combine(AppContext.BaseDirectory, "Scripts", "get_embedding.py");
 
 
         ServiceCollection services = new ServiceCollection();
 
 
-        services.AddSingleton<INameNormalizer>(sp =>
-            new PythonNameNormalizer(scriptPath, assetsDir));
 
         services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
         services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();
