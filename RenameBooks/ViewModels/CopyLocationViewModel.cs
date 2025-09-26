@@ -66,7 +66,6 @@ namespace RenameBooks.ViewModels
             return "Неизвестно";
         }
 
-        // В CopyLocationViewModel.cs
 
         private static void TryDeleteEmptyParentFolders(string filePath, string rootFolder)
         {
@@ -90,13 +89,12 @@ namespace RenameBooks.ViewModels
                     catch (Exception ex)
                     {
                         // Не удалось удалить — выходим, чтобы не зациклиться
-                        System.Diagnostics.Debug.WriteLine($"Не удалось удалить папку {current}: {ex}");
+                        Debug.WriteLine($"Не удалось удалить папку {current}: {ex}");
                         break;
                     }
                 }
                 else
                 {
-                    // Папка не пуста — останавливаемся
                     break;
                 }
             }

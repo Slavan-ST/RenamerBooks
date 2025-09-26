@@ -28,14 +28,22 @@ public partial class App : Application
         var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
 
 
-        ServiceCollection services = new ServiceCollection();
-
-
+        var services = new ServiceCollection();
 
         services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
-        services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();
+        services.AddSingleton<IPathBuilder, DefaultPathBuilder>();
+
+        // Стратегии
+        services.AddTransient<IRenamerStrategy, Fb2RenamerStrategy>();
+
+        // Фабрика
         services.AddSingleton<RenamerFactory>();
+
+        // Сервисы
         services.AddSingleton<FileRenamerService>();
+        services.AddSingleton<IBookOrganizationOrchestrator, BookOrganizationOrchestrator>();
+
+        // UI
         services.AddSingleton<IDialogService, DialogService>();
         services.AddTransient<MainViewModel>();
 
