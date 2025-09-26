@@ -10,6 +10,26 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  
+  <ItemGroup>
+    <AvaloniaResource Remove="Assets\model.onnx" />
+  </ItemGroup>
+
+  
+  <ItemGroup>
+    <None Remove="Scripts\get_embedding.py" />
+  </ItemGroup>
+
+  
+  <ItemGroup>
+    <Content Include="Assets\model.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\get_embedding.py">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.6" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.6" />
@@ -27,8 +47,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Update="Assets\model.onnx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <AvaloniaResource Update="Assets\avalonia-logo.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </AvaloniaResource>
   </ItemGroup>
 </Project>

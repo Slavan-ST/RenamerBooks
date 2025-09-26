@@ -26,12 +26,14 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
-        var modelPath = Path.Combine(assetsDir, "model.onnx");
+        var scriptPath = Path.Combine(AppContext.BaseDirectory, "Scripts", "get_embedding.py");
+
 
         ServiceCollection services = new ServiceCollection();
 
 
-        services.AddSingleton<INameNormalizer>(sp => new OnnxNameNormalizer(modelPath, assetsDir));
+        services.AddSingleton<INameNormalizer>(sp =>
+            new PythonNameNormalizer(scriptPath, assetsDir));
 
         services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
         services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();

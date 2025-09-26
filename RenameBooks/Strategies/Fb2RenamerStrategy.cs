@@ -123,21 +123,32 @@ namespace RenameBooks.Strategies
             string? firstName = authorElement.Element(ns + "first-name")?.Value?.Trim();
             string? lastName = authorElement.Element(ns + "last-name")?.Value?.Trim();
             string? nickname = authorElement.Element(ns + "nickname")?.Value?.Trim();
+            string? middleName = authorElement.Element(ns + "middle-name")?.Value?.Trim();
 
-            // Приоритет: Фамилия + Имя → Фамилия → Ник → Имя
+            // Собираем каноническое имя в формате: "Фамилия, Имя Отчество" (если есть)
             if (!string.IsNullOrEmpty(lastName))
             {
-                return string.IsNullOrEmpty(firstName)
+                var givenNames = new List<string>();
+                if (!string.IsNullOrEmpty(firstName))
+                    givenNames.Add(firstName);
+                if (!string.IsNullOrEmpty(middleName))
+                    givenNames.Add(middleName);
+
+                string givenNamePart = string.Join(" ", givenNames);
+                return string.IsNullOrEmpty(givenNamePart)
                     ? lastName
-                    : $"{lastName} {firstName}";
+                    : $"{lastName}, {givenNamePart}";
             }
 
+            // Если нет фамилии — пробуем ник
             if (!string.IsNullOrEmpty(nickname))
                 return nickname;
 
+            // Если есть только имя — возвращаем его
             if (!string.IsNullOrEmpty(firstName))
                 return firstName;
 
+            // Ничего нет — null
             return null;
         }
     }

@@ -1,32 +1,23 @@
-﻿// Services/OnnxNameNormalizer.cs (обновлённая версия)
-using Microsoft.ML.Transforms.Onnx;
+﻿// Services/PythonNameNormalizer.cs
 using RenameBooks.Interfaces;
-using RenameBooks.Models;
+using RenameBooks.Models; // ← ваш KnownNamesStore
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using FuzzySharp;
 
 namespace RenameBooks.Services
 {
-    public class OnnxNameNormalizer : INameNormalizer
+    public class PythonNameNormalizer : INameNormalizer
     {
-        private readonly OnnxEmbeddingService _embeddingService;
+        private readonly PythonEmbeddingService _embeddingService;
         private readonly KnownNamesStore _store;
         private readonly Dictionary<string, string> _authorCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _seriesCache = new(StringComparer.OrdinalIgnoreCase);
 
-        // Пороги
-        private const float EMBEDDING_THRESHOLD = 0.65f;
-        private const int FUZZY_THRESHOLD = 70;
-
-        public OnnxNameNormalizer(string modelPath, string assetsDir)
+        public PythonNameNormalizer(string scriptPath, string assetsDir)
         {
-            if (!File.Exists(modelPath))
-                throw new FileNotFoundException($"ONNX модель не найдена: {modelPath}");
-
-            _embeddingService = new OnnxEmbeddingService(modelPath);
+            _embeddingService = new PythonEmbeddingService(scriptPath);
             _store = new KnownNamesStore(assetsDir);
         }
 
@@ -39,15 +30,11 @@ namespace RenameBooks.Services
                 return cached;
 
             var knownAuthors = _store.LoadAuthors();
-            var canonical = FindBestMatch(rawAuthor, knownAuthors, _embeddingService, EMBEDDING_THRESHOLD, FUZZY_THRESHOLD);
+            var canonical = FindBestMatch(rawAuthor, knownAuthors);
 
-            // Если это действительно новое имя — добавляем в список
             if (canonical == rawAuthor && !knownAuthors.Contains(rawAuthor, StringComparer.OrdinalIgnoreCase))
             {
                 _store.AddAuthor(rawAuthor);
-                // Обновляем кеш, чтобы не добавлять дважды
-                _authorCache[rawAuthor] = rawAuthor;
-                return rawAuthor;
             }
 
             _authorCache[rawAuthor] = canonical;
@@ -63,33 +50,25 @@ namespace RenameBooks.Services
                 return cached;
 
             var knownSeries = _store.LoadSeries();
-            var canonical = FindBestMatch(rawSeries, knownSeries, _embeddingService, EMBEDDING_THRESHOLD, FUZZY_THRESHOLD);
+            var canonical = FindBestMatch(rawSeries, knownSeries);
 
             if (canonical == rawSeries && !knownSeries.Contains(rawSeries, StringComparer.OrdinalIgnoreCase))
             {
                 _store.AddSeries(rawSeries);
-                _seriesCache[rawSeries] = rawSeries;
-                return rawSeries;
             }
 
             _seriesCache[rawSeries] = canonical;
             return canonical;
         }
 
-        private static string FindBestMatch(
-            string input,
-            List<string> knownValues,
-            OnnxEmbeddingService embeddingService,
-            float embeddingThreshold,
-            int fuzzyThreshold)
+        private string FindBestMatch(string input, List<string> knownValues)
         {
             if (knownValues.Count == 0)
                 return input;
 
-            // 1. Попытка через эмбеддинги
             try
             {
-                var inputEmbedding = embeddingService.GetEmbedding(input);
+                var inputEmbedding = _embeddingService.GetEmbedding(input);
                 float bestScore = -1f;
                 string bestMatch = input;
 
@@ -97,38 +76,42 @@ namespace RenameBooks.Services
                 {
                     try
                     {
-                        var candEmbedding = embeddingService.GetEmbedding(candidate);
+                        var candEmbedding = _embeddingService.GetEmbedding(candidate);
                         var sim = CosineSimilarity(inputEmbedding, candEmbedding);
-                        if (sim > bestScore && sim > embeddingThreshold)
+                        if (sim > bestScore && sim > 0.65f)
                         {
                             bestScore = sim;
                             bestMatch = candidate;
                         }
                     }
-                    catch { /* skip bad candidate */ }
+                    catch { /* skip */ }
                 }
 
-                if (bestScore > embeddingThreshold)
+                if (bestScore > 0.65f)
                     return bestMatch;
             }
             catch { /* fallback to fuzzy */ }
 
-            // 2. Fuzzy fallback
-            var fuzzyBest = knownValues
-                .Select(c => new { Candidate = c, Score = Fuzz.Ratio(input, c) })
+            // Fallback на FuzzySharp (если установлен)
+            return FallbackToFuzzy(input, knownValues);
+        }
+
+        private static string FallbackToFuzzy(string input, List<string> knownValues)
+        {
+#if FUZZY_SHARP
+            var best = knownValues
+                .Select(c => new { Candidate = c, Score = FuzzySharp.Fuzz.Ratio(input, c) })
                 .OrderByDescending(x => x.Score)
                 .FirstOrDefault();
-
-            if (fuzzyBest != null && fuzzyBest.Score >= fuzzyThreshold)
-                return fuzzyBest.Candidate;
-
-            // 3. Ничего не подошло — возвращаем оригинал
+            return best?.Score > 70 ? best.Candidate : input;
+#else
             return input;
+#endif
         }
 
         private static float CosineSimilarity(float[] a, float[] b)
         {
-            if (a.Length != b.Length || a.Length == 0) return 0f;
+            if (a.Length != b.Length) return 0f;
             float dot = 0, normA = 0, normB = 0;
             for (int i = 0; i < a.Length; i++)
             {

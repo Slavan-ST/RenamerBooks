@@ -28,7 +28,7 @@ namespace RenameBooks.Services
         {
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
             _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
-            _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
+    _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         }
 
         /// <summary>
@@ -107,27 +107,18 @@ namespace RenameBooks.Services
                 try
                 {
                     var strategy = _factory.GetStrategy(filePath);
-
                     string title = strategy.ExtractTitle(filePath) ?? "Без названия";
-                    var (rawSeriesName, seriesNumber) = strategy.ExtractSeriesInfo(filePath);
-                    string rawAuthor = strategy.ExtractAuthor(filePath) ?? "Неизвестный автор";
-
-                    // 🔥 Нормализация ДО санитизации
-                    string normalizedAuthor = _normalizer.NormalizeAuthor(rawAuthor);
-                    string normalizedSeries = _normalizer.NormalizeSeries(rawSeriesName ?? string.Empty);
+                    var (seriesName, seriesNumber) = strategy.ExtractSeriesInfo(filePath);
+                    string author = strategy.ExtractAuthor(filePath) ?? "Неизвестный автор";
 
                     string safeTitle = _sanitizer.Sanitize(title);
-                    string safeAuthor = _sanitizer.Sanitize(normalizedAuthor);
-                    string safeSeries = string.IsNullOrEmpty(normalizedSeries)
-                        ? string.Empty
-                        : _sanitizer.Sanitize(normalizedSeries);
-
+                    string safeAuthor = _sanitizer.Sanitize(author);
                     string extension = Path.GetExtension(filePath);
 
                     string authorFolder = Path.Combine(targetRootFolder, safeAuthor);
-                    string seriesFolder = string.IsNullOrEmpty(safeSeries)
+                    string seriesFolder = string.IsNullOrEmpty(seriesName)
                         ? Path.Combine(authorFolder, "Без цикла")
-                        : Path.Combine(authorFolder, safeSeries);
+                        : Path.Combine(authorFolder, _sanitizer.Sanitize(seriesName));
 
                     Directory.CreateDirectory(seriesFolder);
 
