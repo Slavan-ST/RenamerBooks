@@ -28,7 +28,7 @@ namespace RenameBooks.Services
         {
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
             _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
-    _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
+            _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         }
 
         /// <summary>
@@ -65,7 +65,7 @@ namespace RenameBooks.Services
                 try
                 {
                     var strategy = _factory.GetStrategy(filePath);
-                    string title = strategy.ExtractTitle(filePath);
+                    string? title = strategy.ExtractTitle(filePath);
 
                     if (string.IsNullOrWhiteSpace(title))
                         continue;

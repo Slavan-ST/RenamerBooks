@@ -1,15 +1,14 @@
 ﻿using RenameBooks.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace RenameBooks.Strategies
 {
-
     public class Fb2RenamerStrategy : IRenamerStrategy
     {
         public bool CanHandle(string filePath)
@@ -18,63 +17,47 @@ namespace RenameBooks.Strategies
                    filePath.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase);
         }
 
-        public string? ExtractTitle(string filePath)
+        private static readonly XNamespace Fb2Namespace = "http://www.gribuser.ru/xml/fictionbook/2.0";
+
+        [return: MaybeNull]
+        private XDocument LoadFb2Document(string filePath)
         {
-            XDocument? doc = null;
-
-            if (filePath.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase))
-            {
-                // Обработка сжатого FB2
-                using (var archive = ZipFile.OpenRead(filePath))
-                {
-                    var fb2Entry = archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase));
-                    if (fb2Entry == null) return null;
-
-                    using (var stream = fb2Entry.Open())
-                    {
-                        doc = XDocument.Load(stream);
-                    }
-                }
-            }
-            else if (filePath.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase))
-            {
-                // Обработка обычного FB2
-                doc = XDocument.Load(filePath);
-            }
-            else
-            {
-                return null; // Неизвестный формат
-            }
-
-            // Пространство имён FB2
-            XNamespace ns = "http://www.gribuser.ru/xml/fictionbook/2.0";
-
-            var bookTitleElement = doc.Descendants(ns + "book-title").FirstOrDefault();
-            return bookTitleElement?.Value?.Trim();
-        }
-        public (string? SeriesName, int? SeriesNumber) ExtractSeriesInfo(string filePath)
-        {
-            XDocument? doc = null;
-
             if (filePath.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase))
             {
                 using var archive = ZipFile.OpenRead(filePath);
                 var fb2Entry = archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase));
-                if (fb2Entry == null) return (null, null);
+                if (fb2Entry == null) return null;
 
                 using var stream = fb2Entry.Open();
-                doc = XDocument.Load(stream);
+                return XDocument.Load(stream);
             }
             else if (filePath.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase))
             {
-                doc = XDocument.Load(filePath);
+                return XDocument.Load(filePath);
             }
             else
             {
-                return (null, null);
+                return null;
             }
+        }
 
-            XNamespace ns = "http://www.gribuser.ru/xml/fictionbook/2.0";
+        public string? ExtractTitle(string filePath)
+        {
+            var doc = LoadFb2Document(filePath);
+            if (doc == null) return null;
+
+            var ns = Fb2Namespace;
+
+            var bookTitleElement = doc.Descendants(ns + "book-title").FirstOrDefault();
+            return bookTitleElement?.Value?.Trim();
+        }
+
+        public (string? SeriesName, int? SeriesNumber) ExtractSeriesInfo(string filePath)
+        {
+            var doc = LoadFb2Document(filePath);
+            if (doc == null) return (null, null);
+
+            var ns = Fb2Namespace;
 
             var sequenceElement = doc.Descendants(ns + "sequence").FirstOrDefault();
             if (sequenceElement == null) return (null, null);
@@ -92,29 +75,13 @@ namespace RenameBooks.Strategies
 
             return (name, number);
         }
+
         public string? ExtractAuthor(string filePath)
         {
-            XDocument? doc = null;
+            var doc = LoadFb2Document(filePath);
+            if (doc == null) return null;
 
-            if (filePath.EndsWith(".fb2.zip", StringComparison.OrdinalIgnoreCase))
-            {
-                using var archive = ZipFile.OpenRead(filePath);
-                var fb2Entry = archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase));
-                if (fb2Entry == null) return null;
-
-                using var stream = fb2Entry.Open();
-                doc = XDocument.Load(stream);
-            }
-            else if (filePath.EndsWith(".fb2", StringComparison.OrdinalIgnoreCase))
-            {
-                doc = XDocument.Load(filePath);
-            }
-            else
-            {
-                return null;
-            }
-
-            XNamespace ns = "http://www.gribuser.ru/xml/fictionbook/2.0";
+            var ns = Fb2Namespace;
 
             // Берём первого автора
             var authorElement = doc.Descendants(ns + "author").FirstOrDefault();
@@ -125,7 +92,7 @@ namespace RenameBooks.Strategies
             string? nickname = authorElement.Element(ns + "nickname")?.Value?.Trim();
             string? middleName = authorElement.Element(ns + "middle-name")?.Value?.Trim();
 
-            // Собираем каноническое имя в формате: "Фамилия, Имя Отчество" (если есть)
+            // Собираем каноническое имя в формате: "Имя Отчество Фамилия" (если есть)
             if (!string.IsNullOrEmpty(lastName))
             {
                 var givenNames = new List<string>();
@@ -137,7 +104,7 @@ namespace RenameBooks.Strategies
                 string givenNamePart = string.Join(" ", givenNames);
                 return string.IsNullOrEmpty(givenNamePart)
                     ? lastName
-                    : $"{lastName}, {givenNamePart}";
+                    : $"{givenNamePart} {lastName}";
             }
 
             // Если нет фамилии — пробуем ник
