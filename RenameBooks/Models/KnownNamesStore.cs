@@ -12,11 +12,13 @@ namespace RenameBooks.Models
         private readonly string _authorsPath;
         private readonly string _seriesPath;
         private readonly object _lock = new();
+        private const string NAME_JSON_FOR_AUTHORS = "authors.json";
+        private const string NAME_JSON_FOR_SERIES = "series.json";
 
         public KnownNamesStore(string assetsDir)
         {
-            _authorsPath = Path.Combine(assetsDir, "authors.json");
-            _seriesPath = Path.Combine(assetsDir, "series.json");
+            _authorsPath = Path.Combine(assetsDir, NAME_JSON_FOR_AUTHORS);
+            _seriesPath = Path.Combine(assetsDir, NAME_JSON_FOR_SERIES);
 
             EnsureFileExists(_authorsPath, "[]");
             EnsureFileExists(_seriesPath, "[]");

@@ -7,11 +7,11 @@ using System.Threading.Tasks;
 
 namespace RenameBooks.Factories
 {
-    public class RenamerStrategyFactory
+    public class RenamerFactory
     {
         private readonly IEnumerable<IRenamerStrategy> _strategies;
 
-        public RenamerStrategyFactory(IEnumerable<IRenamerStrategy> strategies)
+        public RenamerFactory(IEnumerable<IRenamerStrategy> strategies)
         {
             _strategies = strategies ?? throw new ArgumentNullException(nameof(strategies));
         }

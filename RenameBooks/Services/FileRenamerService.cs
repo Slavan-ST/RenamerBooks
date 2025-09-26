@@ -1,5 +1,6 @@
 ﻿using RenameBooks.Factories;
 using RenameBooks.Interfaces;
+using RenameBooks.Records;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,9 +15,8 @@ namespace RenameBooks.Services
     /// </summary>
     public class FileRenamerService
     {
-        private readonly RenamerStrategyFactory _factory;
+        private readonly RenamerFactory _factory;
         private readonly IFileNameSanitizer _sanitizer;
-        private readonly INameNormalizer _normalizer; // ← новое поле
 
         /// <summary>
         /// Инициализирует новый экземпляр <see cref="FileRenamerService"/>.
@@ -24,34 +24,21 @@ namespace RenameBooks.Services
         /// <param name="factory">Фабрика для получения стратегий переименования.</param>
         /// <param name="sanitizer">Сервис для очистки недопустимых символов из имен файлов.</param>
         /// <exception cref="ArgumentNullException">Если любой из параметров равен <c>null</c>.</exception>
-        public FileRenamerService(RenamerStrategyFactory factory, IFileNameSanitizer sanitizer, INameNormalizer normalizer)
+        public FileRenamerService(RenamerFactory factory, IFileNameSanitizer sanitizer)
         {
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
             _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
-            _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         }
 
-        /// <summary>
-        /// Получает стратегию переименования, подходящую для указанного файла.
-        /// </summary>
-        /// <param name="filePath">Путь к файлу.</param>
-        /// <returns>Экземпляр стратегии переименования.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="filePath"/> равен <c>null</c> или пуст.</exception>
-        public IRenamerStrategy GetStrategy(string filePath) => _factory.GetStrategy(filePath);
+        public IRenamerStrategy GetStrategy(string filePath) =>
+            _factory.GetStrategy(filePath);
 
-        /// <summary>
-        /// Очищает переданное название от недопустимых символов для использования в имени файла.
-        /// </summary>
-        /// <param name="title">Исходное название.</param>
-        /// <returns>Очищенное и безопасное для файловой системы название.</returns>
         public string SanitizeFileName(string title) => _sanitizer.Sanitize(title);
 
         /// <summary>
-        /// Переименовывает указанные файлы, извлекая заголовки с помощью соответствующих стратегий.
-        /// Файлы, для которых не удалось извлечь заголовок, пропускаются.
+        /// Переименовывает файлы на месте, используя извлечённые метаданные.
+        /// Формат имени: "[Автор] - [Название].расширение"
         /// </summary>
-        /// <param name="filePaths">Коллекция путей к файлам для переименования.</param>
-        /// <exception cref="ArgumentNullException"><paramref name="filePaths"/> равен <c>null</c>.</exception>
         public void RenameFiles(IEnumerable<string> filePaths)
         {
             if (filePaths == null)
@@ -65,35 +52,36 @@ namespace RenameBooks.Services
                 try
                 {
                     var strategy = _factory.GetStrategy(filePath);
-                    string? title = strategy.ExtractTitle(filePath);
-
-                    if (string.IsNullOrWhiteSpace(title))
+                    var metadata = strategy.ExtractMetadata(filePath);
+                    if (metadata?.Title is null)
                         continue;
 
-                    string newFilePath = GetUniqueFilePath(filePath);
+                    string author = metadata.Author ?? "Неизвестный автор";
+                    string safeAuthor = _sanitizer.Sanitize(author);
+                    string safeTitle = _sanitizer.Sanitize(metadata.Title);
+
+                    string extension = Path.GetExtension(filePath);
+                    string newFileName = $"{safeAuthor} - {safeTitle}{extension}";
+                    string directory = Path.GetDirectoryName(filePath)!;
+                    string newFilePath = Path.Combine(directory, newFileName);
+                    newFilePath = GetUniqueFilePath(newFilePath);
+
                     File.Move(filePath, newFilePath);
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Ошибка при обработке файла '{filePath}': {ex}");
+                    Debug.WriteLine($"Ошибка при переименовании '{filePath}': {ex}");
                 }
             }
         }
 
         /// <summary>
-        /// Организует указанные файлы книг в иерархическую структуру папок:
-        /// [Целевая папка] / [Автор] / [Цикл или "Без цикла"].
-        /// Имена файлов формируются как "[Номер]. Название.расширение".
+        /// Организует файлы в структуру: [Корень]/[Автор]/[Серия или "Без цикла"]/[№. Название.расш]
         /// </summary>
-        /// <param name="filePaths">Коллекция путей к файлам для организации.</param>
-        /// <param name="targetRootFolder">Корневая папка, в которую будут перемещены файлы.</param>
-        /// <exception cref="ArgumentNullException"><paramref name="filePaths"/> равен <c>null</c>.</exception>
-        /// <exception cref="ArgumentException"><paramref name="targetRootFolder"/> не указан или пуст.</exception>
         public void OrganizeBooksToFolder(IEnumerable<string> filePaths, string targetRootFolder)
         {
             if (filePaths == null)
                 throw new ArgumentNullException(nameof(filePaths));
-
             if (string.IsNullOrWhiteSpace(targetRootFolder))
                 throw new ArgumentException("Целевая папка не указана.", nameof(targetRootFolder));
 
@@ -107,41 +95,38 @@ namespace RenameBooks.Services
                 try
                 {
                     var strategy = _factory.GetStrategy(filePath);
-                    string title = strategy.ExtractTitle(filePath) ?? "Без названия";
-                    var (seriesName, seriesNumber) = strategy.ExtractSeriesInfo(filePath);
-                    string author = strategy.ExtractAuthor(filePath) ?? "Неизвестный автор";
+                    var metadata = strategy.ExtractMetadata(filePath);
+
+                    string title = metadata?.Title ?? "Без названия";
+                    string author = metadata?.Author ?? "Неизвестный автор";
+                    string seriesName = metadata?.SeriesName;
+                    int? seriesNumber = metadata?.SeriesNumber;
 
                     string safeTitle = _sanitizer.Sanitize(title);
                     string safeAuthor = _sanitizer.Sanitize(author);
+                    string safeSeries = string.IsNullOrEmpty(seriesName)
+                        ? "Без цикла"
+                        : _sanitizer.Sanitize(seriesName);
+
                     string extension = Path.GetExtension(filePath);
-
                     string authorFolder = Path.Combine(targetRootFolder, safeAuthor);
-                    string seriesFolder = string.IsNullOrEmpty(seriesName)
-                        ? Path.Combine(authorFolder, "Без цикла")
-                        : Path.Combine(authorFolder, _sanitizer.Sanitize(seriesName));
-
+                    string seriesFolder = Path.Combine(authorFolder, safeSeries);
                     Directory.CreateDirectory(seriesFolder);
 
                     string numberPrefix = seriesNumber.HasValue ? $"{seriesNumber.Value:D2}. " : "";
                     string fileName = $"{numberPrefix}{safeTitle}{extension}";
                     string destinationPath = Path.Combine(seriesFolder, fileName);
-
                     destinationPath = GetUniqueFilePath(destinationPath);
-                    File.Copy(filePath, destinationPath, overwrite: false);
+
+                    File.Move(filePath, destinationPath);
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Ошибка при обработке '{filePath}': {ex}");
+                    Debug.WriteLine($"Ошибка при организации '{filePath}': {ex}");
                 }
             }
         }
 
-        /// <summary>
-        /// Генерирует уникальный путь к файлу, добавляя числовой суффикс при необходимости,
-        /// чтобы избежать конфликта имён.
-        /// </summary>
-        /// <param name="fullPath">Исходный путь к файлу.</param>
-        /// <returns>Уникальный путь к файлу, не конфликтующий с существующими файлами.</returns>
         private string GetUniqueFilePath(string fullPath)
         {
             if (!File.Exists(fullPath))
@@ -151,13 +136,11 @@ namespace RenameBooks.Services
             string fileNameWithoutExt = Path.GetFileNameWithoutExtension(fullPath);
             string extension = Path.GetExtension(fullPath);
 
-            int counter = 1;
-            while (true)
+            for (int counter = 1; ; counter++)
             {
                 string candidate = Path.Combine(directory, $"{fileNameWithoutExt} ({counter}){extension}");
                 if (!File.Exists(candidate))
                     return candidate;
-                counter++;
             }
         }
     }

@@ -37,7 +37,7 @@ public partial class App : Application
 
         services.AddSingleton<IFileNameSanitizer, FileNameSanitizer>();
         services.AddSingleton<IRenamerStrategy, Fb2RenamerStrategy>();
-        services.AddSingleton<RenamerStrategyFactory>();
+        services.AddSingleton<RenamerFactory>();
         services.AddSingleton<FileRenamerService>();
         services.AddSingleton<IDialogService, DialogService>();
         services.AddTransient<MainViewModel>();
